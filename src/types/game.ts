@@ -29,9 +29,14 @@ export type GameStatus = "waiting" | "playing" | "finished"
 
 export type GameType = "kata" | "ak47"
 
+/**
+ * GameMeta holds extra metadata for a running game.
+ * Extendable for future engines.
+ */
 export type GameMeta = {
   targetCard?: string
   step?: string
+  declaringPlayerIndex?: number   // ✅ Added to support Kata engine logic
 }
 
 export type GameState = {

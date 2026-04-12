@@ -4,12 +4,18 @@
  * ============================================
  *
  * PURPOSE:
- * Implements Kata card game logic.
+ * Implements Kata card game logic with corrected rules.
  *
- * NOTES:
+ * GAME RULES:
  * - Suits are ignored
- * - Game is deterministic
- * - Uses action-based system (important for multiplayer later)
+ * - Deterministic, action-based system (important for multiplayer sync)
+ * - Target card is declared at the start
+ * - CUT compares the bottom card of the upper half
+ * - If mismatch:
+ *    1. Swap top and bottom cards
+ *    2. Redistribute deck one card at a time
+ *    3. Start dealing from the declaring player
+ *    4. Game ends when target card appears in a player’s hand
  *
  * ⚠️ DEV NOTES:
  * - Always ensure arrays are strongly typed (avoid "never[]" issues)
@@ -57,7 +63,7 @@ function shuffle(deck: Card[]): Card[] {
 
 export const kataEngine: GameEngine = {
   /**
-   * Initialize game
+   * Initialize game state
    */
   createGame(players: Player[]): GameState {
     return {
@@ -82,7 +88,11 @@ export const kataEngine: GameEngine = {
       case "DECLARE_TARGET":
         return {
           ...state,
-          meta: { ...state.meta, targetCard: action.payload }
+          meta: { 
+            ...state.meta, 
+            targetCard: action.payload,
+            declaringPlayerIndex: state.currentTurn // track who declared
+          }
         }
 
       /**
@@ -94,49 +104,58 @@ export const kataEngine: GameEngine = {
         const topHalf = state.deck.slice(0, index)
         const bottomHalf = state.deck.slice(index)
 
-        const topCard = topHalf[0]
+        // ✅ FIX: Compare bottom card of upper half
+        const cutCard = topHalf[topHalf.length - 1]
 
-        // Win condition
-        if (topCard?.value === state.meta.targetCard) {
+        // Win condition: if cut card matches target
+        if (cutCard?.value === state.meta.targetCard) {
           return {
             ...state,
             status: "finished"
           }
         }
 
-        // Rearranged deck
-        return {
-          ...state,
-          deck: [...bottomHalf, ...topHalf]
+        // Otherwise: swap top and bottom cards
+        const deck = [...state.deck]
+        if (deck.length > 1) {
+          const temp = deck[0]
+          deck[0] = deck[deck.length - 1]
+          deck[deck.length - 1] = temp
         }
-      }
 
-      /**
-       * Redistribute cards among players
-       */
-      case "REDISTRIBUTE": {
-        // ✅ FIX: Proper typing to avoid "never[]" issue
+        // Redistribute cards one by one
         const players: Player[] = state.players.map(p => ({
           ...p,
           hand: []
         }))
 
-        const deck = [...state.deck]
-
-        let i = 0
+        let i = state.meta.declaringPlayerIndex ?? 0
 
         while (deck.length > 0) {
           const card = deck.shift()
           if (!card) break
 
           players[i % players.length].hand.push(card)
+
+          // Termination: target card found
+          if (card.value === state.meta.targetCard) {
+            return {
+              ...state,
+              players,
+              deck: [],
+              status: "finished"
+            }
+          }
+
           i++
         }
 
+        // If no target card found, game continues
         return {
           ...state,
           players,
-          deck: []
+          deck: [],
+          status: "playing"
         }
       }
 
@@ -151,7 +170,7 @@ export const kataEngine: GameEngine = {
   getValidActions(): GameAction[] {
     return [
       { type: "CUT", payload: 10 },
-      { type: "REDISTRIBUTE" }
+      { type: "DECLARE_TARGET", payload: "7" }
     ]
   },
 
