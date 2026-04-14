@@ -27,6 +27,7 @@ import { GameEngine } from "./engine"
 import { GameState, Player, Card, GameAction } from "@/types/game"
 
 const VALUES = ["A","2","3","4","5","6","7","8","9","10","J","Q","K"]
+const SUITS = ["hearts", "diamonds", "clubs", "spades"]
 
 /**
  * Create a standard shuffled deck
@@ -34,12 +35,12 @@ const VALUES = ["A","2","3","4","5","6","7","8","9","10","J","Q","K"]
 function createDeck(): Card[] {
   const deck: Card[] = []
 
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < SUITS.length; i++) {
     for (const v of VALUES) {
       deck.push({
-        id: `${v}-${i}-${Math.random()}`,
+        id: `${v}-${SUITS[i]}-${Math.random()}`,
         value: v,
-        suit: "ignored"
+        suit: SUITS[i]
       })
     }
   }
@@ -119,7 +120,19 @@ export const kataEngine: GameEngine = {
           return state
         }
 
-        const index = Math.max(0, Math.min(action.payload, state.deck.length))
+        const maxCutIndex = Math.max(0, state.deck.length - 2)
+        const index = Math.max(0, Math.min(action.payload, maxCutIndex))
+
+        if (action.payload < 0 || action.payload >= state.deck.length - 1) {
+          return {
+            ...state,
+            meta: {
+              ...state.meta,
+              step: "invalid-cut"
+            }
+          }
+        }
+
         const topHalf = state.deck.slice(0, index)
         const bottomHalf = state.deck.slice(index)
         const cutCard = topHalf[topHalf.length - 1]

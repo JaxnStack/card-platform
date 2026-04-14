@@ -1,7 +1,7 @@
 "use client"
 
 import { AnimatePresence, motion } from "framer-motion"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ChangeEvent } from "react"
 import { useGame } from "@/hooks/useGame"
 import { getEngine } from "@/lib/games"
 import { getAIMove } from "@/lib/ai/basicAI"
@@ -109,7 +109,7 @@ function CardTile({ card }: { card: Card }) {
 }
 
 export default function Home() {
-  const { state, start, dispatch, reset } = useGame()
+  const { state, start, dispatch, reset, applyCardTheme } = useGame()
   const [gameType, setGameType] = useState<GameType>("kata")
   const [playerName, setPlayerName] = useState("Player")
   const [targetCard, setTargetCard] = useState("7")
@@ -120,6 +120,57 @@ export default function Home() {
   const [statusMessage, setStatusMessage] = useState(
     "Configure the game and press Start to play."
   )
+  const [customImageUrl, setCustomImageUrl] = useState("")
+  const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null)
+  const [imageUploadError, setImageUploadError] = useState<string | null>(null)
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
+
+  function handleFileUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) {
+      return
+    }
+
+    const allowedTypes = [
+      "image/png",
+      "image/jpeg",
+      "image/jpg",
+      "image/webp",
+      "image/gif",
+      "image/avif",
+      "image/svg+xml"
+    ]
+
+    if (!allowedTypes.includes(file.type)) {
+      setImageUploadError("Please upload a supported image type: PNG, JPG, WEBP, GIF, AVIF, SVG.")
+      return
+    }
+
+    const url = URL.createObjectURL(file)
+    if (filePreviewUrl) {
+      URL.revokeObjectURL(filePreviewUrl)
+    }
+    setFilePreviewUrl(url)
+    setImageUploadError(null)
+  }
+
+  function handleApplyCardArt() {
+    const imageUrl = filePreviewUrl ?? customImageUrl.trim()
+
+    if (!imageUrl) {
+      setImageUploadError("Enter an image URL or upload a supported file.")
+      return
+    }
+
+    if (!state) {
+      setImageUploadError("Start a game first before applying card art.")
+      return
+    }
+
+    applyCardTheme(imageUrl)
+    setToastMessage("Custom card art applied to all cards.")
+    setImageUploadError(null)
+  }
 
   const currentPlayer = state?.players[state.currentTurn]
   const validActions = useMemo(() => {
@@ -238,6 +289,12 @@ export default function Home() {
           </div>
         </header>
 
+        {toastMessage ? (
+          <div className="mb-6 rounded-3xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-100 shadow-sm">
+            {toastMessage}
+          </div>
+        ) : null}
+
         <section className="grid gap-6 lg:grid-cols-[320px_1fr]">
           <div className="space-y-6 rounded-3xl border border-white/10 bg-slate-900/90 p-6 shadow-lg shadow-black/20">
             <div className="space-y-4">
@@ -329,6 +386,50 @@ export default function Home() {
                   <span className="font-semibold text-slate-100">Deck size:</span>{" "}
                   {deckSize}
                 </p>
+              </div>
+            </div>
+
+            <div className="rounded-3xl bg-slate-950/80 p-5">
+              <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.24em] text-slate-400">
+                Card art theme
+              </h2>
+              <div className="space-y-3 text-sm text-slate-300">
+                <p className="text-slate-400">
+                  Add a custom image URL or upload a supported image format for the current game cards.
+                </p>
+                <input
+                  type="text"
+                  value={customImageUrl}
+                  onChange={(event) => setCustomImageUrl(event.target.value)}
+                  placeholder="Image URL or paste external link"
+                  className="w-full rounded-2xl border border-white/10 bg-slate-800 px-4 py-3 text-sm text-slate-100 outline-none focus:border-teal-300"
+                />
+                <label className="flex cursor-pointer items-center justify-between rounded-2xl border border-dashed border-white/20 bg-slate-800 px-4 py-3 text-sm text-slate-100 transition hover:border-teal-300">
+                  <span>Upload image</span>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,image/avif,image/svg+xml"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                </label>
+                {filePreviewUrl ? (
+                  <img
+                    src={filePreviewUrl}
+                    alt="Card preview"
+                    className="h-28 w-full rounded-3xl object-cover"
+                  />
+                ) : null}
+                <button
+                  className="w-full rounded-2xl bg-gradient-to-r from-indigo-500 to-violet-500 px-4 py-3 text-sm font-semibold text-white transition hover:brightness-110"
+                  onClick={handleApplyCardArt}
+                  disabled={!state}
+                >
+                  Apply card art to all cards
+                </button>
+                {imageUploadError ? (
+                  <p className="text-sm text-rose-300">{imageUploadError}</p>
+                ) : null}
               </div>
             </div>
           </div>

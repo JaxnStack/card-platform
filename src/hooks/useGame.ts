@@ -1,6 +1,6 @@
 import { useGameStore } from "@/store/gameStore"
 import { getEngine } from "@/lib/games"
-import type { GameAction, Player } from "@/types/game"
+import type { Card, GameAction, Player } from "@/types/game"
 
 export function useGame() {
   const { state, setState } = useGameStore()
@@ -21,5 +21,23 @@ export function useGame() {
     setState(null)
   }
 
-  return { state, start, dispatch, reset }
+  function applyCardTheme(imageUrl: string) {
+    if (!state) return
+
+    const cardWithImage = (card: Card) => ({
+      ...card,
+      imageUrl
+    })
+
+    setState({
+      ...state,
+      deck: state.deck.map(cardWithImage),
+      players: state.players.map((player) => ({
+        ...player,
+        hand: player.hand.map(cardWithImage)
+      }))
+    })
+  }
+
+  return { state, start, dispatch, reset, applyCardTheme }
 }
