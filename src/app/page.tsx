@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState, type ChangeEvent } from "react"
 import { useGame } from "@/hooks/useGame"
 import { getEngine } from "@/lib/games"
 import { getAIMove } from "@/lib/ai/basicAI"
+import PlayingCard from "@/components/PlayingCard"
 import type { Card, GameType } from "@/types/game"
 
 const TARGET_OPTIONS = [
@@ -36,74 +37,20 @@ function formatTime(seconds: number) {
   return `${String(minutes).padStart(2, "0")}:${String(remaining).padStart(2, "0")}`
 }
 
-function getCardStyle(suit?: string) {
-  return {
-    background: suit === "red"
-      ? "linear-gradient(135deg, #fb7185 0%, #be123c 100%)"
-      : suit === "blue"
-      ? "linear-gradient(135deg, #60a5fa 0%, #1d4ed8 100%)"
-      : suit === "green"
-      ? "linear-gradient(135deg, #34d399 0%, #047857 100%)"
-      : suit === "yellow"
-      ? "linear-gradient(135deg, #facc15 0%, #ca8a04 100%)"
-      : "linear-gradient(135deg, #334155 0%, #0f172a 100%)",
-    accent: suit === "red"
-      ? "text-rose-100"
-      : suit === "blue"
-      ? "text-sky-100"
-      : suit === "green"
-      ? "text-emerald-100"
-      : suit === "yellow"
-      ? "text-amber-100"
-      : "text-slate-100"
-  }
-}
-
-function getSuitSymbol(suit?: string) {
-  return suit === "red"
-    ? "♥"
-    : suit === "blue"
-    ? "♦"
-    : suit === "green"
-    ? "♣"
-    : suit === "yellow"
-    ? "♠"
-    : "★"
-}
-
 function CardTile({ card }: { card: Card }) {
-  const style = getCardStyle(card.suit)
-  const symbol = getSuitSymbol(card.suit)
-  const hasImage = Boolean(card.imageUrl)
-
   return (
     <motion.div
       layout
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -12 }}
-      className="relative overflow-hidden rounded-3xl border border-white/10 text-slate-100 shadow-xl shadow-black/30"
-      style={{ background: style.background }}
+      className="w-[100px]"
     >
-      {hasImage ? (
-        <img
-          src={card.imageUrl}
-          alt={card.value}
-          className="absolute inset-0 h-full w-full object-cover opacity-90"
-        />
-      ) : null}
-      <div className="relative min-h-[108px] px-4 py-4">
-        <div className="flex items-start justify-between">
-          <span className={`text-lg font-semibold ${style.accent}`}>{card.value}</span>
-          <span className={`text-lg ${style.accent}`}>{symbol}</span>
-        </div>
-        <div className="mt-8 flex h-16 items-center justify-center rounded-3xl bg-white/10 text-3xl text-white/90 shadow-inner shadow-black/20">
-          {hasImage ? "" : symbol}
-        </div>
-        <div className="mt-4 flex justify-end text-xs uppercase tracking-[0.24em] text-white/80">
-          {card.suit ?? "card"}
-        </div>
-      </div>
+      <PlayingCard
+        value={card.value}
+        suit={card.suit ?? "♠"}
+        imageUrl={card.imageUrl}
+      />
     </motion.div>
   )
 }
