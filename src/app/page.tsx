@@ -28,7 +28,7 @@ const RULES: Record<GameType, string> = {
   kata:
     "Kata starts by declaring the target card. Players cut the deck and then redistribute cards from the declaring player. The first player to receive the target card wins.",
   ak47:
-    "AK47 is a draw-based local game. Players take turns drawing a card. A player wins when they collect four cards of the same value."
+    "AK47 starts with four cards each. On your turn, draw from the deck or pick the top discard only if it can complete a four of a kind. Then discard one card so you end your turn with four cards. The first player to finish a turn holding four matching cards wins."
 }
 
 function formatTime(seconds: number) {
@@ -37,14 +37,25 @@ function formatTime(seconds: number) {
   return `${String(minutes).padStart(2, "0")}:${String(remaining).padStart(2, "0")}`
 }
 
-function CardTile({ card }: { card: Card }) {
+function CardTile({
+  card,
+  onClick,
+  disabled
+}: {
+  card: Card
+  onClick?: () => void
+  disabled?: boolean
+}) {
   return (
     <motion.div
       layout
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -12 }}
-      className="w-[100px]"
+      className={`w-[100px] ${onClick && !disabled ? "cursor-pointer" : ""} ${
+        disabled ? "opacity-60" : ""
+      }`}
+      onClick={onClick}
     >
       <PlayingCard
         value={card.value}
@@ -131,9 +142,17 @@ export default function Home() {
   const canDeclare = validActions.some((action) => action.type === "DECLARE_TARGET")
   const canCut = validActions.some((action) => action.type === "CUT")
   const canRedistribute = validActions.some((action) => action.type === "REDISTRIBUTE")
-  const canDraw = validActions.some((action) => action.type === "DRAW_CARD")
+  const canDrawDeck = validActions.some(
+    (action) => action.type === "DRAW_CARD" && action.payload !== "discard"
+  )
+  const canDrawDiscard = validActions.some(
+    (action) => action.type === "DRAW_CARD" && action.payload === "discard"
+  )
+  const canDiscardCard = validActions.some((action) => action.type === "DISCARD_CARD")
   const hasState = Boolean(state)
   const deckSize = state?.deck.length ?? 0
+  const currentHandLength = currentPlayer?.hand.length ?? 0
+  const discardTop = state?.discardPile[state.discardPile.length - 1]
   const isHumanTurn = currentPlayer && !currentPlayer.isAI
   const gameTitle = gameType === "kata" ? "Kata" : "AK47"
 
@@ -440,15 +459,33 @@ export default function Home() {
                           </div>
                         </>
                       ) : (
-                        <div className="rounded-3xl bg-slate-950/80 p-5">
-                          <p className="text-sm text-slate-400">Draw a card</p>
-                          <button
-                            className="mt-4 w-full rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
-                            onClick={() => dispatch({ type: "DRAW_CARD" })}
-                            disabled={!canDraw || !isHumanTurn}
-                          >
-                            Draw Card
-                          </button>
+                        <div className="space-y-4 rounded-3xl bg-slate-950/80 p-5">
+                          {currentHandLength === 4 ? (
+                            <>
+                              <p className="text-sm text-slate-400">Draw a card or pick the top discard</p>
+                              <button
+                                className="mt-4 w-full rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+                                onClick={() => dispatch({ type: "DRAW_CARD", payload: "deck" })}
+                                disabled={!canDrawDeck || !isHumanTurn}
+                              >
+                                Draw from deck
+                              </button>
+                              <button
+                                className="w-full rounded-2xl bg-slate-700 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-60"
+                                onClick={() => dispatch({ type: "DRAW_CARD", payload: "discard" })}
+                                disabled={!canDrawDiscard || !isHumanTurn}
+                              >
+                                Pick top discard
+                              </button>
+                            </>
+                          ) : (
+                            <div>
+                              <p className="text-sm text-slate-400">Discard one card to complete your turn.</p>
+                              <p className="mt-3 text-sm text-slate-200">
+                                Click any card in your hand to discard it.
+                              </p>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -471,6 +508,12 @@ export default function Home() {
                     <div className="rounded-3xl border border-white/10 bg-slate-900/80 p-4">
                       <p className="text-sm uppercase tracking-[0.2em] text-slate-400">Deck</p>
                       <p className="mt-3 text-3xl font-semibold text-white">{deckSize}</p>
+                    </div>
+                    <div className="rounded-3xl border border-white/10 bg-slate-900/80 p-4">
+                      <p className="text-sm uppercase tracking-[0.2em] text-slate-400">Discard pile</p>
+                      <p className="mt-3 text-base text-slate-200">
+                        {discardTop ? `${discardTop.value} of ${discardTop.suit}` : "Empty"}
+                      </p>
                     </div>
                     <div className="rounded-3xl border border-white/10 bg-slate-900/80 p-4">
                       <p className="text-sm uppercase tracking-[0.2em] text-slate-400">Valid action</p>
@@ -500,9 +543,21 @@ export default function Home() {
                       </div>
                       <div className="mt-4 flex flex-wrap gap-2">
                         <AnimatePresence initial={false}>
-                          {player.hand.map((card) => (
-                        <CardTile key={card.id} card={card} />
-                      ))}
+                          {player.hand.map((card) => {
+                            const isClickable =
+                              player.id === currentPlayer?.id &&
+                              canDiscardCard &&
+                              isHumanTurn
+
+                            return (
+                              <CardTile
+                                key={card.id}
+                                card={card}
+                                onClick={isClickable ? () => dispatch({ type: "DISCARD_CARD", payload: card.id }) : undefined}
+                                disabled={!isClickable && player.id === currentPlayer?.id && currentHandLength === 5}
+                              />
+                            )
+                          })}
                         </AnimatePresence>
                       </div>
                     </div>

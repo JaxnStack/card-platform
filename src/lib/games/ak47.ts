@@ -61,6 +61,17 @@ function nextPlayer(state: GameState) {
   return (state.currentTurn + 1) % state.players.length
 }
 
+function canPickDiscardForWin(hand: Card[], discardPile: Card[]) {
+  const topCard = discardPile[discardPile.length - 1]
+  if (!topCard) {
+    return false
+  }
+
+  // Players may only pick the top discard if it completes a four-of-a-kind.
+  // This enforces the rule that the discard stack can be used only to win.
+  return hasFourOfKind([...hand, topCard])
+}
+
 export const ak47Engine: GameEngine = {
   createGame(players: Player[]): GameState {
     const deck = createDeck()
@@ -71,18 +82,21 @@ export const ak47Engine: GameEngine = {
 
     const cardDeck = [...deck]
     for (const player of playersWithHands) {
-      player.hand = cardDeck.splice(0, 5)
+      player.hand = cardDeck.splice(0, 4)
     }
+
+    const winner = playersWithHands.find((player) => hasFourOfKind(player.hand))
 
     return {
       players: playersWithHands,
       deck: cardDeck,
       discardPile: [],
       currentTurn: 0,
-      status: "playing",
+      status: winner ? "finished" : "playing",
       gameType: "ak47",
       meta: {
-        step: "dealt"
+        step: winner ? "win" : "dealt",
+        winnerId: winner?.id
       }
     }
   },
@@ -92,8 +106,40 @@ export const ak47Engine: GameEngine = {
       return state
     }
 
+    const currentPlayer = state.players[state.currentTurn]
+    if (!currentPlayer) {
+      return state
+    }
+
     switch (action.type) {
       case "DRAW_CARD": {
+        if (currentPlayer.hand.length !== 4) {
+          return state
+        }
+
+        if (action.payload === "discard") {
+          const discardTop = state.discardPile[state.discardPile.length - 1]
+          if (!discardTop) {
+            return state
+          }
+
+          const players = state.players.map((player, index) =>
+            index === state.currentTurn
+              ? { ...player, hand: [...player.hand, discardTop] }
+              : player
+          )
+
+          return {
+            ...state,
+            players,
+            discardPile: state.discardPile.slice(0, -1),
+            meta: {
+              ...state.meta,
+              step: "picked-discard"
+            }
+          }
+        }
+
         if (state.deck.length === 0) {
           return {
             ...state,
@@ -114,32 +160,48 @@ export const ak47Engine: GameEngine = {
             : player
         )
 
-        const currentPlayer = players[state.currentTurn]
-        const winnerId = hasFourOfKind(currentPlayer.hand)
-          ? currentPlayer.id
-          : undefined
-
         return {
           ...state,
           players,
           deck,
-          currentTurn: winnerId ? state.currentTurn : nextPlayer(state),
-          status: winnerId ? "finished" : deck.length === 0 ? "finished" : "playing",
           meta: {
             ...state.meta,
-            winnerId,
-            step: winnerId ? "win" : deck.length === 0 ? "deck-empty" : "drawn"
+            step: "drew-deck"
           }
         }
       }
 
-      case "END_TURN": {
+      case "DISCARD_CARD": {
+        if (currentPlayer.hand.length !== 5) {
+          return state
+        }
+
+        const cardIndex = currentPlayer.hand.findIndex((card) => card.id === action.payload)
+        if (cardIndex === -1) {
+          return state
+        }
+
+        const cardToDiscard = currentPlayer.hand[cardIndex]
+        const remainingHand = currentPlayer.hand.filter((card) => card.id !== action.payload)
+        const players = state.players.map((player, index) =>
+          index === state.currentTurn
+            ? { ...player, hand: remainingHand }
+            : player
+        )
+
+        const winnerId = hasFourOfKind(remainingHand) ? currentPlayer.id : undefined
+        const nextTurn = winnerId ? state.currentTurn : nextPlayer(state)
+
         return {
           ...state,
-          currentTurn: nextPlayer(state),
+          players,
+          discardPile: [...state.discardPile, cardToDiscard],
+          currentTurn: nextTurn,
+          status: winnerId ? "finished" : "playing",
           meta: {
             ...state.meta,
-            step: "ended-turn"
+            winnerId,
+            step: winnerId ? "win" : "discarded"
           }
         }
       }
@@ -159,8 +221,25 @@ export const ak47Engine: GameEngine = {
       return []
     }
 
-    if (state.deck.length > 0) {
-      return [{ type: "DRAW_CARD" }]
+    if (activePlayer.hand.length === 5) {
+      return activePlayer.hand.map((card) => ({
+        type: "DISCARD_CARD",
+        payload: card.id
+      }))
+    }
+
+    if (activePlayer.hand.length === 4) {
+      const actions: GameAction[] = []
+
+      if (state.deck.length > 0) {
+        actions.push({ type: "DRAW_CARD", payload: "deck" })
+      }
+
+      if (canPickDiscardForWin(activePlayer.hand, state.discardPile)) {
+        actions.push({ type: "DRAW_CARD", payload: "discard" })
+      }
+
+      return actions
     }
 
     return []

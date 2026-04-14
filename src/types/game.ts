@@ -55,6 +55,6 @@ export type GameAction =
   | { type: "DECLARE_TARGET"; payload: string }
   | { type: "CUT"; payload: number }
   | { type: "REDISTRIBUTE" }
-  | { type: "DRAW_CARD" }
+  | { type: "DRAW_CARD"; payload?: "deck" | "discard" }
   | { type: "DISCARD_CARD"; payload: string }
   | { type: "END_TURN" }
