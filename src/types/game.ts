@@ -16,6 +16,7 @@ export type Card = {
   id: string
   value: string
   suit?: string
+  imageUrl?: string
 }
 
 export type Player = {
