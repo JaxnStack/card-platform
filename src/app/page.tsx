@@ -15,7 +15,9 @@
  * NOTES:
  * - Uses `useGame` hook to manage game state
  * - Deck cards are displayed with index + value
- * - Cut index can be entered manually
+ * - Cut index is validated against deck length
+ * - UI safely handles null state (before game starts)
+ * - Buttons are disabled when actions are invalid
  */
 
 import { useState } from "react"
@@ -25,6 +27,20 @@ export default function Home() {
   const { state, start, dispatch } = useGame()
   const [cutIndex, setCutIndex] = useState(0)
 
+  /**
+   * ============================================
+   * SAFE GUARDS
+   * ============================================
+   */
+  const hasState = !!state
+  const deckSize = state?.deck.length ?? 0
+
+  /**
+   * Clamp cut index to valid range
+   */
+  const safeCutIndex =
+    deckSize > 0 ? Math.min(Math.max(cutIndex, 0), deckSize - 1) : 0
+
   return (
     <div className="p-4 sm:p-10 bg-slate-900 text-white min-h-screen">
       {/* Title */}
@@ -32,8 +48,17 @@ export default function Home() {
         Kata MVP 🎮
       </h1>
 
+      {/* Game Status */}
+      <div className="mb-4 text-sm text-gray-300">
+        Status:{" "}
+        <span className="font-semibold">
+          {state?.status ?? "not started"}
+        </span>
+      </div>
+
       {/* Controls */}
       <div className="flex flex-wrap gap-4 mb-6">
+        {/* Start Game */}
         <button
           className="px-4 py-2 bg-green-600 rounded hover:bg-green-700"
           onClick={() =>
@@ -46,8 +71,14 @@ export default function Home() {
           Start Game
         </button>
 
+        {/* Declare Target */}
         <button
-          className="px-4 py-2 bg-blue-600 rounded hover:bg-blue-700"
+          disabled={!hasState}
+          className={`px-4 py-2 rounded ${
+            hasState
+              ? "bg-blue-600 hover:bg-blue-700"
+              : "bg-gray-500 cursor-not-allowed"
+          }`}
           onClick={() =>
             dispatch({ type: "DECLARE_TARGET", payload: "7" })
           }
@@ -60,21 +91,36 @@ export default function Home() {
           <input
             type="number"
             min="0"
-            max={state.deck.length - 1}
-            value={cutIndex}
+            max={deckSize > 0 ? deckSize - 1 : 0}
+            value={safeCutIndex}
+            disabled={!hasState}
             onChange={(e) => setCutIndex(Number(e.target.value))}
-            className="px-2 py-1 text-black rounded w-20"
+            className="px-2 py-1 text-black rounded w-20 disabled:bg-gray-400"
           />
+
           <button
-            className="px-4 py-2 bg-red-600 rounded hover:bg-red-700"
-            onClick={() => dispatch({ type: "CUT", payload: cutIndex })}
+            disabled={!hasState || deckSize === 0}
+            className={`px-4 py-2 rounded ${
+              hasState
+                ? "bg-red-600 hover:bg-red-700"
+                : "bg-gray-500 cursor-not-allowed"
+            }`}
+            onClick={() =>
+              dispatch({ type: "CUT", payload: safeCutIndex })
+            }
           >
             Cut Deck
           </button>
         </div>
 
+        {/* Redistribute */}
         <button
-          className="px-4 py-2 bg-purple-600 rounded hover:bg-purple-700"
+          disabled={!hasState}
+          className={`px-4 py-2 rounded ${
+            hasState
+              ? "bg-purple-600 hover:bg-purple-700"
+              : "bg-gray-500 cursor-not-allowed"
+          }`}
           onClick={() => dispatch({ type: "REDISTRIBUTE" })}
         >
           Redistribute
@@ -82,41 +128,45 @@ export default function Home() {
       </div>
 
       {/* Deck display */}
-      <div className="mb-6">
-        <h2 className="text-xl font-semibold mb-2">Deck</h2>
-        <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
-          {state.deck.map((card, i) => (
-            <div
-              key={card.id}
-              className="p-2 bg-gray-700 rounded text-center text-sm"
-            >
-              {i}: {card.value}
+      {hasState && (
+        <div className="mb-6">
+          <h2 className="text-xl font-semibold mb-2">Deck ({deckSize})</h2>
+          <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
+            {state!.deck.map((card, i) => (
+              <div
+                key={card.id}
+                className="p-2 bg-gray-700 rounded text-center text-sm"
+              >
+                {i}: {card.value}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Player hands */}
+      {hasState && (
+        <div className="mb-6">
+          <h2 className="text-xl font-semibold mb-2">Players</h2>
+          {state!.players.map((player) => (
+            <div key={player.id} className="mb-4">
+              <h3 className="font-bold">{player.name}</h3>
+              <div className="flex flex-wrap gap-2">
+                {player.hand.map((card) => (
+                  <div
+                    key={card.id}
+                    className="p-2 bg-blue-700 rounded text-center text-sm w-12"
+                  >
+                    {card.value}
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
         </div>
-      </div>
+      )}
 
-      {/* Player hands */}
-      <div className="mb-6">
-        <h2 className="text-xl font-semibold mb-2">Players</h2>
-        {state.players.map((player) => (
-          <div key={player.id} className="mb-4">
-            <h3 className="font-bold">{player.name}</h3>
-            <div className="flex flex-wrap gap-2">
-              {player.hand.map((card) => (
-                <div
-                  key={card.id}
-                  className="p-2 bg-blue-700 rounded text-center text-sm w-12"
-                >
-                  {card.value}
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Debug JSON (optional) */}
+      {/* Debug JSON */}
       <div className="bg-black p-4 rounded">
         <pre className="text-xs sm:text-sm overflow-auto">
           {JSON.stringify(state, null, 2)}
