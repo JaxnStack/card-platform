@@ -64,9 +64,9 @@ function nextPlayer(state: GameState) {
 export const ak47Engine: GameEngine = {
   createGame(players: Player[]): GameState {
     const deck = createDeck()
-    const playersWithHands = players.map((player) => ({
+    const playersWithHands: Player[] = players.map((player) => ({
       ...player,
-      hand: []
+      hand: [] as Card[]
     }))
 
     const cardDeck = [...deck]
