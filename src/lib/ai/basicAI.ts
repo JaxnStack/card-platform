@@ -7,12 +7,19 @@
  * Selects a random valid move.
  */
 
-import { GameState } from "@/types/game"
+import type { GameAction, GameState } from "@/types/game"
 import { getEngine } from "@/lib/games"
 
-export function getAIMove(state: GameState) {
+export function getAIMove(state: GameState): GameAction | null {
   const engine = getEngine(state.gameType)
-  const actions = engine.getValidActions(state, "ai")
+  const currentPlayer = state.players[state.currentTurn]
+  const actions = currentPlayer
+    ? engine.getValidActions(state, currentPlayer.id)
+    : []
+
+  if (actions.length === 0) {
+    return null
+  }
 
   return actions[Math.floor(Math.random() * actions.length)]
 }

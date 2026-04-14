@@ -61,6 +61,16 @@ function shuffle(deck: Card[]): Card[] {
   return arr
 }
 
+function nextPlayer(state: GameState): number {
+  return (state.currentTurn + 1) % state.players.length
+}
+
+function getWinnerByTarget(state: GameState): string | undefined {
+  return state.players.find((player) =>
+    player.hand.some((card) => card.value === state.meta.targetCard)
+  )?.id
+}
+
 export const kataEngine: GameEngine = {
   /**
    * Initialize game state
@@ -73,7 +83,9 @@ export const kataEngine: GameEngine = {
       currentTurn: 0,
       status: "playing",
       gameType: "kata",
-      meta: {}
+      meta: {
+        step: "waiting"
+      }
     }
   },
 
@@ -81,41 +93,49 @@ export const kataEngine: GameEngine = {
    * Main dispatcher for game actions
    */
   dispatch(state: GameState, action: GameAction): GameState {
+    if (state.status === "finished") {
+      return state
+    }
+
     switch (action.type) {
-      /**
-       * Declare target card (e.g. "7")
-       */
-      case "DECLARE_TARGET":
-        return {
-          ...state,
-          meta: { 
-            ...state.meta, 
-            targetCard: action.payload,
-            declaringPlayerIndex: state.currentTurn // track who declared
-          }
+      case "DECLARE_TARGET": {
+        if (state.meta.targetCard) {
+          return state
         }
 
-      /**
-       * Cut the deck at a given index
-       */
-      case "CUT": {
-        const index = action.payload
+        return {
+          ...state,
+          meta: {
+            ...state.meta,
+            targetCard: action.payload,
+            declaringPlayerIndex: state.currentTurn,
+            step: "target-declared"
+          }
+        }
+      }
 
+      case "CUT": {
+        if (!state.meta.targetCard || state.deck.length === 0) {
+          return state
+        }
+
+        const index = Math.max(0, Math.min(action.payload, state.deck.length))
         const topHalf = state.deck.slice(0, index)
         const bottomHalf = state.deck.slice(index)
-
-        // ✅ FIX: Compare bottom card of upper half
         const cutCard = topHalf[topHalf.length - 1]
 
-        // Win condition: if cut card matches target
         if (cutCard?.value === state.meta.targetCard) {
           return {
             ...state,
-            status: "finished"
+            status: "finished",
+            meta: {
+              ...state.meta,
+              winnerId: state.players[state.currentTurn]?.id,
+              step: "cut-winner"
+            }
           }
         }
 
-        // Otherwise: swap top and bottom cards
         const deck = [...state.deck]
         if (deck.length > 1) {
           const temp = deck[0]
@@ -123,39 +143,67 @@ export const kataEngine: GameEngine = {
           deck[deck.length - 1] = temp
         }
 
-        // Redistribute cards one by one
-        const players: Player[] = state.players.map(p => ({
-          ...p,
+        return {
+          ...state,
+          deck,
+          currentTurn: nextPlayer(state),
+          meta: {
+            ...state.meta,
+            step: "cut-completed"
+          }
+        }
+      }
+
+      case "REDISTRIBUTE": {
+        if (!state.meta.targetCard || state.deck.length === 0) {
+          return state
+        }
+
+        const players: Player[] = state.players.map((player) => ({
+          ...player,
           hand: []
         }))
 
-        let i = state.meta.declaringPlayerIndex ?? 0
+        const deck = [...state.deck]
+        let index = state.meta.declaringPlayerIndex ?? 0
 
         while (deck.length > 0) {
           const card = deck.shift()
-          if (!card) break
+          if (!card) {
+            break
+          }
 
-          players[i % players.length].hand.push(card)
+          players[index % players.length].hand.push(card)
 
-          // Termination: target card found
           if (card.value === state.meta.targetCard) {
+            const winnerId = players[index % players.length].id
             return {
               ...state,
               players,
               deck: [],
-              status: "finished"
+              status: "finished",
+              currentTurn: nextPlayer(state),
+              meta: {
+                ...state.meta,
+                winnerId,
+                step: "redistributed"
+              }
             }
           }
 
-          i++
+          index += 1
         }
 
-        // If no target card found, game continues
         return {
           ...state,
           players,
           deck: [],
-          status: "playing"
+          status: "playing",
+          currentTurn: nextPlayer(state),
+          meta: {
+            ...state.meta,
+            step: "redistributed"
+          }
         }
       }
 
@@ -165,13 +213,27 @@ export const kataEngine: GameEngine = {
   },
 
   /**
-   * Returns possible actions (basic for now)
+   * Returns possible actions for the current player.
    */
-  getValidActions(): GameAction[] {
-    return [
-      { type: "CUT", payload: 10 },
-      { type: "DECLARE_TARGET", payload: "7" }
-    ]
+  getValidActions(state: GameState, playerId: string) {
+    if (state.status !== "playing") {
+      return []
+    }
+
+    const activePlayer = state.players[state.currentTurn]
+    if (!activePlayer || activePlayer.id !== playerId) {
+      return []
+    }
+
+    if (!state.meta.targetCard) {
+      return [{ type: "DECLARE_TARGET", payload: "7" }]
+    }
+
+    if (state.meta.step !== "cut-completed") {
+      return [{ type: "CUT", payload: Math.floor(state.deck.length / 2) }]
+    }
+
+    return [{ type: "REDISTRIBUTE" }]
   },
 
   /**

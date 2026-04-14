@@ -1,177 +1,475 @@
 "use client"
 
-/**
- * ============================================
- * MVP TEST PAGE (IMPROVED UI, MOBILE RESPONSIVE)
- * ============================================
- *
- * PURPOSE:
- * - Provides a simple UI for testing the Kata game engine
- * - Allows starting a game, declaring a target card, cutting the deck,
- *   and redistributing cards
- * - Renders deck and player hands visually instead of raw JSON
- * - Mobile responsive using Tailwind CSS
- *
- * NOTES:
- * - Uses `useGame` hook to manage game state
- * - Deck cards are displayed with index + value
- * - Cut index is validated against deck length
- * - UI safely handles null state (before game starts)
- * - Buttons are disabled when actions are invalid
- */
-
-import { useState } from "react"
+import { AnimatePresence, motion } from "framer-motion"
+import { useEffect, useMemo, useState } from "react"
 import { useGame } from "@/hooks/useGame"
+import { getEngine } from "@/lib/games"
+import { getAIMove } from "@/lib/ai/basicAI"
+import type { Card, GameType } from "@/types/game"
+
+const TARGET_OPTIONS = [
+  "A",
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+  "8",
+  "9",
+  "10",
+  "J",
+  "Q",
+  "K"
+]
+
+const RULES: Record<GameType, string> = {
+  kata:
+    "Kata starts by declaring the target card. Players cut the deck and then redistribute cards from the declaring player. The first player to receive the target card wins.",
+  ak47:
+    "AK47 is a draw-based local game. Players take turns drawing a card. A player wins when they collect four cards of the same value."
+}
+
+function formatTime(seconds: number) {
+  const minutes = Math.floor(seconds / 60)
+  const remaining = seconds % 60
+  return `${String(minutes).padStart(2, "0")}:${String(remaining).padStart(2, "0")}`
+}
 
 export default function Home() {
-  const { state, start, dispatch } = useGame()
+  const { state, start, dispatch, reset } = useGame()
+  const [gameType, setGameType] = useState<GameType>("kata")
+  const [playerName, setPlayerName] = useState("Player")
+  const [targetCard, setTargetCard] = useState("7")
+  const [theme, setTheme] = useState<"light" | "dark">("dark")
+  const [showRules, setShowRules] = useState(false)
   const [cutIndex, setCutIndex] = useState(0)
+  const [turnSeconds, setTurnSeconds] = useState(0)
+  const [statusMessage, setStatusMessage] = useState(
+    "Configure the game and press Start to play."
+  )
 
-  /**
-   * ============================================
-   * SAFE GUARDS
-   * ============================================
-   */
-  const hasState = !!state
+  const currentPlayer = state?.players[state.currentTurn]
+  const validActions = useMemo(() => {
+    if (!state || !currentPlayer) {
+      return []
+    }
+
+    return getEngine(state.gameType).getValidActions(state, currentPlayer.id)
+  }, [state, currentPlayer])
+
+  const canDeclare = validActions.some((action) => action.type === "DECLARE_TARGET")
+  const canCut = validActions.some((action) => action.type === "CUT")
+  const canRedistribute = validActions.some((action) => action.type === "REDISTRIBUTE")
+  const canDraw = validActions.some((action) => action.type === "DRAW_CARD")
+  const hasState = Boolean(state)
   const deckSize = state?.deck.length ?? 0
+  const isHumanTurn = currentPlayer && !currentPlayer.isAI
+  const gameTitle = gameType === "kata" ? "Kata" : "AK47"
 
-  /**
-   * Clamp cut index to valid range
-   */
-  const safeCutIndex =
-    deckSize > 0 ? Math.min(Math.max(cutIndex, 0), deckSize - 1) : 0
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", theme === "dark")
+  }, [theme])
+
+  useEffect(() => {
+    setTurnSeconds(0)
+  }, [state?.currentTurn, state?.status])
+
+  useEffect(() => {
+    if (!state || state.status !== "playing") {
+      return
+    }
+
+    if (currentPlayer?.isAI) {
+      const move = getAIMove(state)
+      if (!move) {
+        return
+      }
+      const timer = setTimeout(() => dispatch(move), 700)
+      return () => clearTimeout(timer)
+    }
+  }, [state, currentPlayer, dispatch])
+
+  useEffect(() => {
+    if (!state || state.status !== "playing") {
+      return
+    }
+
+    const interval = setInterval(() => {
+      setTurnSeconds((seconds) => seconds + 1)
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [state?.currentTurn, state?.status])
+
+  useEffect(() => {
+    if (!state) {
+      setStatusMessage("Configure the game and press Start to play.")
+      return
+    }
+
+    if (state.status === "finished") {
+      if (state.meta.winnerId) {
+        const winner = state.players.find((player) => player.id === state.meta.winnerId)
+        setStatusMessage(
+          winner ? `${winner.name} wins!` : "Game finished with a winner."
+        )
+      } else {
+        setStatusMessage("Game finished. No winner this round.")
+      }
+      return
+    }
+
+    setStatusMessage(
+      `${currentPlayer?.name ?? "Player"}'s turn - ${gameTitle} (${formatTime(turnSeconds)})`
+    )
+  }, [state, currentPlayer, gameTitle, turnSeconds])
+
+  function handleStart() {
+    const players = [
+      { id: "player-1", name: playerName || "Player", hand: [] },
+      { id: "player-2", name: "AI", hand: [], isAI: true }
+    ]
+
+    start(gameType, players)
+  }
+
+  const safeCutIndex = deckSize > 0 ? Math.min(Math.max(cutIndex, 0), deckSize - 1) : 0
 
   return (
-    <div className="p-4 sm:p-10 bg-slate-900 text-white min-h-screen">
-      {/* Title */}
-      <h1 className="text-2xl sm:text-3xl font-bold mb-6 text-yellow-400">
-        Kata MVP 🎮
-      </h1>
-
-      {/* Game Status */}
-      <div className="mb-4 text-sm text-gray-300">
-        Status:{" "}
-        <span className="font-semibold">
-          {state?.status ?? "not started"}
-        </span>
-      </div>
-
-      {/* Controls */}
-      <div className="flex flex-wrap gap-4 mb-6">
-        {/* Start Game */}
-        <button
-          className="px-4 py-2 bg-green-600 rounded hover:bg-green-700"
-          onClick={() =>
-            start("kata", [
-              { id: "1", name: "Player", hand: [] },
-              { id: "2", name: "AI", hand: [], isAI: true }
-            ])
-          }
-        >
-          Start Game
-        </button>
-
-        {/* Declare Target */}
-        <button
-          disabled={!hasState}
-          className={`px-4 py-2 rounded ${
-            hasState
-              ? "bg-blue-600 hover:bg-blue-700"
-              : "bg-gray-500 cursor-not-allowed"
-          }`}
-          onClick={() =>
-            dispatch({ type: "DECLARE_TARGET", payload: "7" })
-          }
-        >
-          Declare 7
-        </button>
-
-        {/* Cut index input + button */}
-        <div className="flex items-center gap-2">
-          <input
-            type="number"
-            min="0"
-            max={deckSize > 0 ? deckSize - 1 : 0}
-            value={safeCutIndex}
-            disabled={!hasState}
-            onChange={(e) => setCutIndex(Number(e.target.value))}
-            className="px-2 py-1 text-black rounded w-20 disabled:bg-gray-400"
-          />
-
-          <button
-            disabled={!hasState || deckSize === 0}
-            className={`px-4 py-2 rounded ${
-              hasState
-                ? "bg-red-600 hover:bg-red-700"
-                : "bg-gray-500 cursor-not-allowed"
-            }`}
-            onClick={() =>
-              dispatch({ type: "CUT", payload: safeCutIndex })
-            }
-          >
-            Cut Deck
-          </button>
-        </div>
-
-        {/* Redistribute */}
-        <button
-          disabled={!hasState}
-          className={`px-4 py-2 rounded ${
-            hasState
-              ? "bg-purple-600 hover:bg-purple-700"
-              : "bg-gray-500 cursor-not-allowed"
-          }`}
-          onClick={() => dispatch({ type: "REDISTRIBUTE" })}
-        >
-          Redistribute
-        </button>
-      </div>
-
-      {/* Deck display */}
-      {hasState && (
-        <div className="mb-6">
-          <h2 className="text-xl font-semibold mb-2">Deck ({deckSize})</h2>
-          <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
-            {state!.deck.map((card, i) => (
-              <div
-                key={card.id}
-                className="p-2 bg-gray-700 rounded text-center text-sm"
-              >
-                {i}: {card.value}
-              </div>
-            ))}
+    <div className="min-h-screen bg-slate-950 text-slate-100 transition-colors duration-300">
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+        <header className="mb-8 flex flex-col gap-4 rounded-3xl border border-white/10 bg-slate-900/90 p-6 shadow-xl shadow-black/20 backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.26em] text-teal-300">Phase 2 · Game experience</p>
+            <h1 className="mt-2 text-3xl font-semibold text-white sm:text-4xl">Card Platform</h1>
+            <p className="mt-2 max-w-2xl text-sm text-slate-400">
+              Local game board with Kata and AK47 support, AI turn flow, rules modal, dark mode, and animated cards.
+            </p>
           </div>
-        </div>
-      )}
 
-      {/* Player hands */}
-      {hasState && (
-        <div className="mb-6">
-          <h2 className="text-xl font-semibold mb-2">Players</h2>
-          {state!.players.map((player) => (
-            <div key={player.id} className="mb-4">
-              <h3 className="font-bold">{player.name}</h3>
-              <div className="flex flex-wrap gap-2">
-                {player.hand.map((card) => (
-                  <div
-                    key={card.id}
-                    className="p-2 bg-blue-700 rounded text-center text-sm w-12"
+          <div className="grid gap-3 sm:auto-cols-min sm:grid-flow-col">
+            <button
+              type="button"
+              className="rounded-2xl border border-white/10 bg-slate-800 px-4 py-2 text-sm text-slate-100 transition hover:border-teal-300 hover:text-teal-300"
+              onClick={() => setShowRules(true)}
+            >
+              Rules
+            </button>
+            <button
+              type="button"
+              className="rounded-2xl border border-white/10 bg-gradient-to-r from-teal-500 to-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:brightness-110"
+              onClick={() => setTheme((value) => (value === "dark" ? "light" : "dark"))}
+            >
+              {theme === "dark" ? "Light mode" : "Dark mode"}
+            </button>
+          </div>
+        </header>
+
+        <section className="grid gap-6 lg:grid-cols-[320px_1fr]">
+          <div className="space-y-6 rounded-3xl border border-white/10 bg-slate-900/90 p-6 shadow-lg shadow-black/20">
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="text-sm text-slate-400">Game</label>
+                <select
+                  className="rounded-2xl border border-white/10 bg-slate-800 px-4 py-3 text-sm text-slate-100 outline-none focus:border-teal-300"
+                  value={gameType}
+                  onChange={(event) => setGameType(event.target.value as GameType)}
+                  disabled={hasState}
+                >
+                  <option value="kata">Kata</option>
+                  <option value="ak47">AK47</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm text-slate-400">Player name</label>
+                <input
+                  className="w-full rounded-2xl border border-white/10 bg-slate-800 px-4 py-3 text-sm text-slate-100 outline-none focus:border-teal-300"
+                  value={playerName}
+                  onChange={(event) => setPlayerName(event.target.value)}
+                  placeholder="Enter your name"
+                  disabled={hasState}
+                />
+              </div>
+
+              {gameType === "kata" && (
+                <div className="space-y-2">
+                  <label className="text-sm text-slate-400">Target card</label>
+                  <select
+                    className="w-full rounded-2xl border border-white/10 bg-slate-800 px-4 py-3 text-sm text-slate-100 outline-none focus:border-teal-300"
+                    value={targetCard}
+                    onChange={(event) => setTargetCard(event.target.value)}
+                    disabled={hasState}
                   >
-                    {card.value}
-                  </div>
-                ))}
+                    {TARGET_OPTIONS.map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <button
+                className="w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-cyan-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={handleStart}
+                disabled={hasState}
+              >
+                Start {gameTitle}
+              </button>
+
+              {hasState && (
+                <button
+                  className="w-full rounded-2xl border border-white/10 bg-slate-800 px-5 py-3 text-sm text-slate-100 transition hover:border-rose-400"
+                  onClick={() => {
+                    reset()
+                    setStatusMessage("Game reset. Configure a new match.")
+                  }}
+                >
+                  Reset game
+                </button>
+              )}
+            </div>
+
+            <div className="rounded-3xl bg-slate-950/80 p-5">
+              <div className="mb-3 flex items-center justify-between text-sm text-slate-400">
+                <span>Status</span>
+                <span className="text-slate-200">{state?.status ?? "not started"}</span>
+              </div>
+              <p className="text-sm leading-6 text-slate-300">{statusMessage}</p>
+            </div>
+
+            <div className="rounded-3xl bg-slate-950/80 p-5">
+              <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.24em] text-slate-400">
+                Turn details
+              </h2>
+              <div className="space-y-3 text-sm text-slate-300">
+                <p>
+                  <span className="font-semibold text-slate-100">Current player:</span>{" "}
+                  {currentPlayer?.name ?? "—"}
+                </p>
+                <p>
+                  <span className="font-semibold text-slate-100">Turn timer:</span>{" "}
+                  {formatTime(turnSeconds)}
+                </p>
+                <p>
+                  <span className="font-semibold text-slate-100">Deck size:</span>{" "}
+                  {deckSize}
+                </p>
               </div>
             </div>
-          ))}
-        </div>
-      )}
+          </div>
 
-      {/* Debug JSON */}
-      <div className="bg-black p-4 rounded">
-        <pre className="text-xs sm:text-sm overflow-auto">
-          {JSON.stringify(state, null, 2)}
-        </pre>
+          <main className="space-y-6">
+            {hasState ? (
+              <div className="rounded-3xl border border-white/10 bg-slate-900/90 p-6 shadow-lg shadow-black/20">
+                <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-xl font-semibold text-white">{gameTitle} Board</h2>
+                    <p className="text-sm text-slate-400">{RULES[gameType]}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    {gameType === "kata" ? (
+                      <span className="inline-flex items-center rounded-full bg-blue-500/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-blue-200">
+                        Kata mode
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center rounded-full bg-fuchsia-500/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-fuchsia-200">
+                        AK47 mode
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-[1.4fr_0.9fr]">
+                  <div className="space-y-4">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {gameType === "kata" ? (
+                        <>
+                          <div className="rounded-3xl bg-slate-950/80 p-5">
+                            <p className="text-sm text-slate-400">Declare target</p>
+                            <button
+                              className="mt-4 w-full rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                              onClick={() => dispatch({ type: "DECLARE_TARGET", payload: targetCard })}
+                              disabled={!canDeclare || !targetCard || !isHumanTurn}
+                            >
+                              Declare {targetCard}
+                            </button>
+                          </div>
+
+                          <div className="rounded-3xl bg-slate-950/80 p-5">
+                            <p className="text-sm text-slate-400">Cut deck</p>
+                            <div className="mt-4 flex gap-3">
+                              <input
+                                type="number"
+                                min={0}
+                                max={Math.max(deckSize - 1, 0)}
+                                value={safeCutIndex}
+                                onChange={(event) => setCutIndex(Number(event.target.value))}
+                                className="w-24 rounded-2xl border border-white/10 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-teal-300"
+                              />
+                              <button
+                                className="rounded-2xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                onClick={() => dispatch({ type: "CUT", payload: safeCutIndex })}
+                                disabled={!canCut || !isHumanTurn}
+                              >
+                                Cut
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="rounded-3xl bg-slate-950/80 p-5">
+                          <p className="text-sm text-slate-400">Draw a card</p>
+                          <button
+                            className="mt-4 w-full rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => dispatch({ type: "DRAW_CARD" })}
+                            disabled={!canDraw || !isHumanTurn}
+                          >
+                            Draw Card
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {gameType === "kata" && (
+                      <div className="rounded-3xl bg-slate-950/80 p-5">
+                        <p className="text-sm text-slate-400">Redistribute after cut</p>
+                        <button
+                          className="mt-4 w-full rounded-2xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60"
+                          onClick={() => dispatch({ type: "REDISTRIBUTE" })}
+                          disabled={!canRedistribute || !isHumanTurn}
+                        >
+                          Redistribute Deck
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-4 rounded-3xl bg-slate-950/80 p-5">
+                    <div className="rounded-3xl border border-white/10 bg-slate-900/80 p-4">
+                      <p className="text-sm uppercase tracking-[0.2em] text-slate-400">Deck</p>
+                      <p className="mt-3 text-3xl font-semibold text-white">{deckSize}</p>
+                    </div>
+                    <div className="rounded-3xl border border-white/10 bg-slate-900/80 p-4">
+                      <p className="text-sm uppercase tracking-[0.2em] text-slate-400">Valid action</p>
+                      <p className="mt-3 text-base text-slate-200">
+                        {validActions.length > 0
+                          ? validActions.map((action) => action.type).join(", ")
+                          : "Waiting for next turn..."}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-8 grid gap-4 rounded-3xl border border-white/10 bg-slate-950/80 p-5">
+                  <h3 className="text-lg font-semibold text-white">Players</h3>
+                  {state!.players.map((player) => (
+                    <div key={player.id} className="rounded-3xl border border-white/5 bg-slate-900/80 p-4">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <p className="font-semibold text-white">{player.name}</p>
+                          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
+                            {player.isAI ? "AI" : "Human"}
+                          </p>
+                        </div>
+                        <span className="rounded-full bg-slate-800 px-3 py-1 text-xs text-slate-300">
+                          {player.hand.length} cards
+                        </span>
+                      </div>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <AnimatePresence initial={false}>
+                          {player.hand.map((card) => (
+                            <motion.div
+                              key={card.id}
+                              layout
+                              initial={{ opacity: 0, y: 16 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -16 }}
+                              className="rounded-2xl border border-white/10 bg-slate-800 px-3 py-2 text-sm font-semibold text-slate-100 shadow-lg shadow-black/20"
+                            >
+                              {card.value}
+                            </motion.div>
+                          ))}
+                        </AnimatePresence>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-3xl border border-white/10 bg-slate-900/90 p-6 shadow-lg shadow-black/20">
+                <h2 className="text-xl font-semibold text-white">Ready to play</h2>
+                <p className="mt-3 text-sm leading-6 text-slate-400">
+                  Choose a game, enter your name, and start a local match against the built-in AI.
+                </p>
+              </div>
+            )}
+
+            {hasState && (
+              <div className="rounded-3xl border border-white/10 bg-slate-900/90 p-6 shadow-lg shadow-black/20">
+                <h2 className="text-xl font-semibold text-white">Deck</h2>
+                <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-6">
+                  {state!.deck.slice(0, 12).map((card) => (
+                    <motion.div
+                      key={card.id}
+                      layout
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="rounded-2xl border border-white/10 bg-slate-800 px-3 py-2 text-center text-sm text-slate-100"
+                    >
+                      {card.value}
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </main>
+        </section>
       </div>
+
+      <AnimatePresence>
+        {showRules && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 px-4 py-6"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="w-full max-w-2xl rounded-3xl border border-white/10 bg-slate-900 p-8 shadow-2xl shadow-black/40"
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 20, opacity: 0 }}
+            >
+              <div className="mb-6 flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-2xl font-semibold text-white">Game rules</h2>
+                  <p className="mt-2 text-sm text-slate-400">Quick guide for Kata and AK47.</p>
+                </div>
+                <button
+                  type="button"
+                  className="rounded-2xl border border-white/10 bg-slate-800 px-4 py-2 text-sm text-slate-100 transition hover:border-red-400"
+                  onClick={() => setShowRules(false)}
+                >
+                  Close
+                </button>
+              </div>
+              <div className="space-y-6 text-sm leading-7 text-slate-300">
+                <div>
+                  <h3 className="mb-2 text-lg font-semibold text-white">Kata</h3>
+                  <p>{RULES.kata}</p>
+                </div>
+                <div>
+                  <h3 className="mb-2 text-lg font-semibold text-white">AK47</h3>
+                  <p>{RULES.ak47}</p>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

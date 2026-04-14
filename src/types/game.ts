@@ -36,7 +36,8 @@ export type GameType = "kata" | "ak47"
 export type GameMeta = {
   targetCard?: string
   step?: string
-  declaringPlayerIndex?: number   // ✅ Added to support Kata engine logic
+  declaringPlayerIndex?: number
+  winnerId?: string
 }
 
 export type GameState = {
@@ -53,3 +54,6 @@ export type GameAction =
   | { type: "DECLARE_TARGET"; payload: string }
   | { type: "CUT"; payload: number }
   | { type: "REDISTRIBUTE" }
+  | { type: "DRAW_CARD" }
+  | { type: "DISCARD_CARD"; payload: string }
+  | { type: "END_TURN" }

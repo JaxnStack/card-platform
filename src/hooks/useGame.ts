@@ -1,6 +1,6 @@
 import { useGameStore } from "@/store/gameStore"
 import { getEngine } from "@/lib/games"
-import { Player } from "@/types/game"
+import type { GameAction, Player } from "@/types/game"
 
 export function useGame() {
   const { state, setState } = useGameStore()
@@ -11,11 +11,15 @@ export function useGame() {
     setState(newState)
   }
 
-  function dispatch(action: any) {
+  function dispatch(action: GameAction) {
     if (!state) return
     const engine = getEngine(state.gameType)
     setState(engine.dispatch(state, action))
   }
 
-  return { state, start, dispatch }
+  function reset() {
+    setState(null)
+  }
+
+  return { state, start, dispatch, reset }
 }
