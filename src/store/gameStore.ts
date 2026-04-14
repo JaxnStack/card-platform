@@ -3,7 +3,7 @@ import { GameState } from "@/types/game"
 
 type Store = {
   state: GameState | null
-  setState: (s: GameState) => void
+  setState: (s: GameState | null) => void
 }
 
 export const useGameStore = create<Store>((set) => ({
