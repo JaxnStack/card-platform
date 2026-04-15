@@ -28,7 +28,7 @@ const RULES: Record<GameType, string> = {
   kata:
     "Kata starts by declaring the target card. Players cut the deck and then redistribute cards from the declaring player. The first player to receive the target card wins.",
   ak47:
-    "AK47 starts with four cards each. On your turn, draw from the deck or pick the top discard only if it can complete a four of a kind. Then discard one card so you end your turn with four cards. The first player to finish a turn holding four matching cards wins."
+    "AK47 starts by selecting four ranks to win with, for example A, K, 4, and 7. Suits are ignored. On your turn, draw from the deck (reshuffling discards when needed) or pick the top discard only if it completes your win set. Then discard one card so you end your turn with four cards. The first player with all selected ranks wins."
 }
 
 function formatTime(seconds: number) {
@@ -52,7 +52,7 @@ function CardTile({
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -12 }}
-      className={`w-[100px] ${onClick && !disabled ? "cursor-pointer" : ""} ${
+      className={`w-[72px] sm:w-[100px] ${onClick && !disabled ? "cursor-pointer" : ""} ${
         disabled ? "opacity-60" : ""
       }`}
       onClick={onClick}
@@ -71,6 +71,7 @@ export default function Home() {
   const [gameType, setGameType] = useState<GameType>("kata")
   const [playerName, setPlayerName] = useState("Player")
   const [targetCard, setTargetCard] = useState("7")
+  const [ak47Stake, setAk47Stake] = useState<string[]>(["A", "K", "4", "7"])
   const [theme, setTheme] = useState<"light" | "dark">("dark")
   const [showRules, setShowRules] = useState(false)
   const [cutIndex, setCutIndex] = useState(0)
@@ -82,6 +83,18 @@ export default function Home() {
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null)
   const [imageUploadError, setImageUploadError] = useState<string | null>(null)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
+
+  function handleToggleStake(value: string) {
+    setAk47Stake((current) => {
+      if (current.includes(value)) {
+        return current.filter((item) => item !== value)
+      }
+      if (current.length >= 4) {
+        return current
+      }
+      return [...current, value]
+    })
+  }
 
   function handleFileUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -220,7 +233,7 @@ export default function Home() {
       { id: "player-2", name: "AI", hand: [], isAI: true }
     ]
 
-    start(gameType, players)
+    start(gameType, players, { stakeValues: ak47Stake })
   }
 
   const safeCutIndex = deckSize > 0 ? Math.min(Math.max(cutIndex, 0), deckSize - 1) : 0
@@ -306,10 +319,47 @@ export default function Home() {
                 </div>
               )}
 
+              {gameType === "ak47" && (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-4">
+                      <label className="text-sm text-slate-400">Winning ranks</label>
+                      <span className="text-xs text-slate-500">
+                        {ak47Stake.length}/4 selected
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-6 gap-2 sm:grid-cols-8">
+                      {TARGET_OPTIONS.map((value) => {
+                        const selected = ak47Stake.includes(value)
+                        const canSelectMore = selected || ak47Stake.length < 4
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => handleToggleStake(value)}
+                            disabled={hasState || !canSelectMore}
+                            className={`rounded-2xl border px-2 py-2 text-sm font-semibold transition ${
+                              selected
+                                ? "border-emerald-400 bg-emerald-500 text-slate-950"
+                                : "border-white/10 bg-slate-800 text-slate-100 hover:border-teal-300"
+                            } ${!canSelectMore ? "opacity-40" : ""}`}
+                          >
+                            {value}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Select exactly four ranks for the win set. Suits are ignored.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <button
                 className="w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-cyan-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
                 onClick={handleStart}
-                disabled={hasState}
+                disabled={hasState || (gameType === "ak47" && ak47Stake.length !== 4)}
               >
                 Start {gameTitle}
               </button>
@@ -333,6 +383,11 @@ export default function Home() {
                 <span className="text-slate-200">{state?.status ?? "not started"}</span>
               </div>
               <p className="text-sm leading-6 text-slate-300">{statusMessage}</p>
+              {state?.gameType === "ak47" && state.meta.stakeValues ? (
+                <p className="mt-3 text-sm text-slate-400">
+                  Win set: {state.meta.stakeValues.join(", ")}
+                </p>
+              ) : null}
             </div>
 
             <div className="rounded-3xl bg-slate-950/80 p-5">
@@ -573,16 +628,6 @@ export default function Home() {
               </div>
             )}
 
-            {hasState && (
-              <div className="rounded-3xl border border-white/10 bg-slate-900/90 p-6 shadow-lg shadow-black/20">
-                <h2 className="text-xl font-semibold text-white">Deck</h2>
-                <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-6">
-                  {state!.deck.slice(0, 12).map((card) => (
-                    <CardTile key={card.id} card={card} />
-                  ))}
-                </div>
-              </div>
-            )}
           </main>
         </section>
       </div>

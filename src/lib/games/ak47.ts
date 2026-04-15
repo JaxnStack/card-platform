@@ -16,6 +16,7 @@ import { GameState, Player, Card, GameAction } from "@/types/game"
 
 const VALUES = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
 const SUITS = ["hearts", "diamonds", "clubs", "spades"]
+const DEFAULT_STAKES = ["A", "K", "4", "7"]
 
 function createDeck(): Card[] {
   const deck: Card[] = []
@@ -44,36 +45,56 @@ function shuffle(deck: Card[]): Card[] {
   return arr
 }
 
-function hasFourOfKind(hand: Card[]) {
-  const counts: Record<string, number> = {}
-
-  for (const card of hand) {
-    counts[card.value] = (counts[card.value] ?? 0) + 1
-    if (counts[card.value] === 4) {
-      return true
-    }
-  }
-
-  return false
+function hasStakeSet(hand: Card[], stakeValues: string[]) {
+  const values = new Set(hand.map((card) => card.value))
+  return stakeValues.every((value) => values.has(value))
 }
 
 function nextPlayer(state: GameState) {
   return (state.currentTurn + 1) % state.players.length
 }
 
-function canPickDiscardForWin(hand: Card[], discardPile: Card[]) {
+function canDrawFromDeck(state: GameState) {
+  return state.deck.length > 0 || state.discardPile.length > 1
+}
+
+function replenishDeckIfNeeded(state: GameState) {
+  if (state.deck.length > 0) {
+    return {
+      deck: state.deck,
+      discardPile: state.discardPile
+    }
+  }
+
+  if (state.discardPile.length <= 1) {
+    return {
+      deck: [],
+      discardPile: state.discardPile
+    }
+  }
+
+  const topDiscard = state.discardPile[state.discardPile.length - 1]
+  const rest = state.discardPile.slice(0, -1)
+  return {
+    deck: shuffle(rest),
+    discardPile: [topDiscard]
+  }
+}
+
+function canPickDiscardForWin(hand: Card[], discardPile: Card[], stakeValues: string[]) {
   const topCard = discardPile[discardPile.length - 1]
   if (!topCard) {
     return false
   }
 
-  // Players may only pick the top discard if it completes a four-of-a-kind.
-  // This enforces the rule that the discard stack can be used only to win.
-  return hasFourOfKind([...hand, topCard])
+  // Players may only pick the top discard if it completes the current stake set.
+  // Suits do not matter for the AK47 win condition.
+  return hasStakeSet([...hand, topCard], stakeValues)
 }
 
 export const ak47Engine: GameEngine = {
-  createGame(players: Player[]): GameState {
+  createGame(players: Player[], options?: { stakeValues?: string[] }): GameState {
+    const stakeValues = options?.stakeValues ?? DEFAULT_STAKES
     const deck = createDeck()
     const playersWithHands: Player[] = players.map((player) => ({
       ...player,
@@ -85,7 +106,7 @@ export const ak47Engine: GameEngine = {
       player.hand = cardDeck.splice(0, 4)
     }
 
-    const winner = playersWithHands.find((player) => hasFourOfKind(player.hand))
+    const winner = playersWithHands.find((player) => hasStakeSet(player.hand, stakeValues))
 
     return {
       players: playersWithHands,
@@ -96,7 +117,8 @@ export const ak47Engine: GameEngine = {
       gameType: "ak47",
       meta: {
         step: winner ? "win" : "dealt",
-        winnerId: winner?.id
+        winnerId: winner?.id,
+        stakeValues
       }
     }
   },
@@ -118,6 +140,10 @@ export const ak47Engine: GameEngine = {
         }
 
         if (action.payload === "discard") {
+          if (!canPickDiscardForWin(currentPlayer.hand, state.discardPile, state.meta.stakeValues ?? DEFAULT_STAKES)) {
+            return state
+          }
+
           const discardTop = state.discardPile[state.discardPile.length - 1]
           if (!discardTop) {
             return state
@@ -140,7 +166,8 @@ export const ak47Engine: GameEngine = {
           }
         }
 
-        if (state.deck.length === 0) {
+        const replenished = replenishDeckIfNeeded(state)
+        if (replenished.deck.length === 0) {
           return {
             ...state,
             status: "finished",
@@ -151,7 +178,7 @@ export const ak47Engine: GameEngine = {
           }
         }
 
-        const deck = [...state.deck]
+        const deck = [...replenished.deck]
         const drawnCard = deck.shift()!
 
         const players = state.players.map((player, index) =>
@@ -164,6 +191,7 @@ export const ak47Engine: GameEngine = {
           ...state,
           players,
           deck,
+          discardPile: replenished.discardPile,
           meta: {
             ...state.meta,
             step: "drew-deck"
@@ -189,7 +217,8 @@ export const ak47Engine: GameEngine = {
             : player
         )
 
-        const winnerId = hasFourOfKind(remainingHand) ? currentPlayer.id : undefined
+        const stakeValues = state.meta.stakeValues ?? DEFAULT_STAKES
+        const winnerId = hasStakeSet(remainingHand, stakeValues) ? currentPlayer.id : undefined
         const nextTurn = winnerId ? state.currentTurn : nextPlayer(state)
 
         return {
@@ -231,11 +260,11 @@ export const ak47Engine: GameEngine = {
     if (activePlayer.hand.length === 4) {
       const actions: GameAction[] = []
 
-      if (state.deck.length > 0) {
+      if (canDrawFromDeck(state)) {
         actions.push({ type: "DRAW_CARD", payload: "deck" })
       }
 
-      if (canPickDiscardForWin(activePlayer.hand, state.discardPile)) {
+      if (canPickDiscardForWin(activePlayer.hand, state.discardPile, state.meta.stakeValues ?? DEFAULT_STAKES)) {
         actions.push({ type: "DRAW_CARD", payload: "discard" })
       }
 

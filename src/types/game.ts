@@ -36,6 +36,7 @@ export type GameType = "kata" | "ak47"
  */
 export type GameMeta = {
   targetCard?: string
+  stakeValues?: string[]
   step?: string
   declaringPlayerIndex?: number
   winnerId?: string

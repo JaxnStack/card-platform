@@ -1,13 +1,13 @@
 import { useGameStore } from "@/store/gameStore"
 import { getEngine } from "@/lib/games"
-import type { Card, GameAction, Player } from "@/types/game"
+import type { Card, GameAction, Player, GameState } from "@/types/game"
 
 export function useGame() {
   const { state, setState } = useGameStore()
 
-  function start(gameType: "kata" | "ak47", players: Player[]) {
+  function start(gameType: "kata" | "ak47", players: Player[], options?: { stakeValues?: string[] }) {
     const engine = getEngine(gameType)
-    const newState = engine.createGame(players)
+    const newState = engine.createGame(players, options)
     setState(newState)
   }
 
@@ -39,5 +39,5 @@ export function useGame() {
     })
   }
 
-  return { state, start, dispatch, reset, applyCardTheme }
+  return { state, start, dispatch, reset, applyCardTheme, setState }
 }
