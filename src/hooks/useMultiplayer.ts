@@ -174,6 +174,25 @@ export function useMultiplayer() {
     setState(result.room.state)
   }
 
+  function updatePlayerName(name: string) {
+    if (!player) {
+      return
+    }
+
+    const updatedPlayer = { ...player, name }
+    setPlayer(updatedPlayer)
+    window.localStorage.setItem("card-platform-player-name", name)
+
+    if (room) {
+      setRoom({
+        ...room,
+        players: room.players.map((member) =>
+          member.id === player.id ? { ...member, name } : member
+        )
+      })
+    }
+  }
+
   const connectedPlayers = useMemo(() => room?.players ?? [], [room])
 
   return {

@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion"
 import { useEffect, useMemo, useState, type ChangeEvent } from "react"
 import { useGame } from "@/hooks/useGame"
+import { useMultiplayer } from "@/hooks/useMultiplayer"
 import { getEngine } from "@/lib/games"
 import { getAIMove } from "@/lib/ai/basicAI"
 import PlayingCard from "@/components/PlayingCard"
@@ -69,6 +70,7 @@ function CardTile({
 export default function Home() {
   const { state, start, dispatch, reset, applyCardTheme } = useGame()
   const [gameType, setGameType] = useState<GameType>("kata")
+  const [playMode, setPlayMode] = useState<"local" | "multiplayer">("local")
   const [playerName, setPlayerName] = useState("Player")
   const [targetCard, setTargetCard] = useState("7")
   const [ak47Stake, setAk47Stake] = useState<string[]>(["A", "K", "4", "7"])
@@ -83,6 +85,27 @@ export default function Home() {
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null)
   const [imageUploadError, setImageUploadError] = useState<string | null>(null)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
+
+  const {
+    room,
+    player: roomPlayer,
+    roomCode,
+    roomName,
+    createGameType,
+    joinRoomCode,
+    status: roomStatus,
+    error: roomError,
+    connectedPlayers,
+    setRoomName,
+    setCreateGameType,
+    setJoinRoomCode,
+    createRoom,
+    joinRoom,
+    leaveRoom,
+    startRoomGame,
+    performAction,
+    updatePlayerName
+  } = useMultiplayer()
 
   function handleToggleStake(value: string) {
     setAk47Stake((current) => {
@@ -141,6 +164,19 @@ export default function Home() {
     applyCardTheme(imageUrl)
     setToastMessage("Custom card art applied to all cards.")
     setImageUploadError(null)
+  }
+
+  useEffect(() => {
+    setCreateGameType(gameType)
+  }, [gameType, setCreateGameType])
+
+  function handleGameAction(action: GameAction) {
+    if (playMode === "multiplayer") {
+      performAction(action).catch((err) => setToastMessage((err as Error).message))
+      return
+    }
+
+    dispatch(action)
   }
 
   const currentPlayer = state?.players[state.currentTurn]
@@ -282,7 +318,11 @@ export default function Home() {
                 <select
                   className="rounded-2xl border border-white/10 bg-slate-800 px-4 py-3 text-sm text-slate-100 outline-none focus:border-teal-300"
                   value={gameType}
-                  onChange={(event) => setGameType(event.target.value as GameType)}
+                  onChange={(event) => {
+                    const nextType = event.target.value as GameType
+                    setGameType(nextType)
+                    setCreateGameType(nextType)
+                  }}
                   disabled={hasState}
                 >
                   <option value="kata">Kata</option>
@@ -295,7 +335,10 @@ export default function Home() {
                 <input
                   className="w-full rounded-2xl border border-white/10 bg-slate-800 px-4 py-3 text-sm text-slate-100 outline-none focus:border-teal-300"
                   value={playerName}
-                  onChange={(event) => setPlayerName(event.target.value)}
+                  onChange={(event) => {
+                    setPlayerName(event.target.value)
+                    updatePlayerName(event.target.value)
+                  }}
                   placeholder="Enter your name"
                   disabled={hasState}
                 />
@@ -374,6 +417,159 @@ export default function Home() {
                 >
                   Reset game
                 </button>
+              )}
+            </div>
+
+            <div className="rounded-3xl bg-slate-950/80 p-5">
+              <div className="mb-4 flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-400">
+                    Multiplayer lobby
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-slate-400">
+                    Create a room, join friends, and keep the game synced live.
+                  </p>
+                </div>
+                <div className="inline-flex rounded-3xl bg-slate-800 px-3 py-2 text-xs uppercase tracking-[0.24em] text-slate-300">
+                  {playMode === "local" ? "Local" : "Online"}
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPlayMode("local")}
+                  className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
+                    playMode === "local"
+                      ? "bg-emerald-500 text-slate-950"
+                      : "border border-white/10 bg-slate-800 text-slate-100 hover:border-teal-300"
+                  }`}
+                >
+                  Local
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPlayMode("multiplayer")}
+                  className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
+                    playMode === "multiplayer"
+                      ? "bg-cyan-500 text-slate-950"
+                      : "border border-white/10 bg-slate-800 text-slate-100 hover:border-teal-300"
+                  }`}
+                >
+                  Multiplayer
+                </button>
+              </div>
+
+              {playMode === "multiplayer" ? (
+                <div className="mt-6 space-y-4">
+                  <div className="rounded-3xl bg-slate-900/80 p-4">
+                    <label className="mb-2 block text-sm text-slate-400">Room name</label>
+                    <input
+                      className="w-full rounded-2xl border border-white/10 bg-slate-800 px-4 py-3 text-sm text-slate-100 outline-none focus:border-teal-300"
+                      value={roomName}
+                      onChange={(event) => setRoomName(event.target.value)}
+                      placeholder="Friendly match"
+                      disabled={Boolean(room)}
+                    />
+                    <label className="mt-4 mb-2 block text-sm text-slate-400">Game</label>
+                    <select
+                      className="w-full rounded-2xl border border-white/10 bg-slate-800 px-4 py-3 text-sm text-slate-100 outline-none focus:border-teal-300"
+                      value={createGameType}
+                      onChange={(event) => setCreateGameType(event.target.value as GameType)}
+                      disabled={Boolean(room)}
+                    >
+                      <option value="kata">Kata</option>
+                      <option value="ak47">AK47</option>
+                    </select>
+                    <button
+                      type="button"
+                      className="mt-4 w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-cyan-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                      onClick={createRoom}
+                      disabled={Boolean(room)}
+                    >
+                      Create room
+                    </button>
+                  </div>
+
+                  <div className="rounded-3xl bg-slate-900/80 p-4">
+                    <label className="mb-2 block text-sm text-slate-400">Room code</label>
+                    <input
+                      className="w-full rounded-2xl border border-white/10 bg-slate-800 px-4 py-3 text-sm text-slate-100 outline-none focus:border-teal-300"
+                      value={joinRoomCode}
+                      onChange={(event) => setJoinRoomCode(event.target.value)}
+                      placeholder="XXXXXX"
+                      disabled={Boolean(room)}
+                    />
+                    <button
+                      type="button"
+                      className="mt-4 w-full rounded-2xl bg-gradient-to-r from-sky-500 to-blue-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                      onClick={joinRoom}
+                      disabled={Boolean(room)}
+                    >
+                      Join room
+                    </button>
+                  </div>
+
+                  {room ? (
+                    <div className="rounded-3xl bg-slate-900/80 p-4">
+                      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm text-slate-400">Room code</p>
+                          <p className="text-lg font-semibold text-white">{room.room_code}</p>
+                        </div>
+                        <span className="rounded-full bg-slate-800 px-3 py-1 text-xs uppercase tracking-[0.24em] text-slate-400">
+                          {room.status}
+                        </span>
+                      </div>
+
+                      <div className="space-y-2 text-sm text-slate-300">
+                        <p>
+                          <span className="font-semibold text-slate-100">Host</span>: {room.players.find((member) => member.id === room.host_id)?.name}
+                        </p>
+                        <p>
+                          <span className="font-semibold text-slate-100">Players</span>: {room.players.length}
+                        </p>
+                      </div>
+
+                      <div className="mt-4 grid gap-2">
+                        {room.players.map((member) => (
+                          <div key={member.id} className="flex items-center justify-between rounded-2xl border border-white/10 bg-slate-800 px-4 py-3 text-sm text-slate-200">
+                            <span>{member.name}</span>
+                            <span className="rounded-full bg-slate-700 px-2 py-1 text-xs text-slate-300">
+                              {member.isHost ? "Host" : "Guest"}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="mt-4 flex flex-col gap-3">
+                        <button
+                          type="button"
+                          className="w-full rounded-2xl bg-gradient-to-r from-indigo-500 to-violet-500 px-4 py-3 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                          onClick={startRoomGame}
+                          disabled={room.host_id !== roomPlayer?.id || room.players.length < 2 || room.status !== "waiting"}
+                        >
+                          {room.status === "waiting" ? "Start room game" : "Game in progress"}
+                        </button>
+                        <button
+                          type="button"
+                          className="w-full rounded-2xl border border-white/10 bg-slate-800 px-4 py-3 text-sm text-slate-100 transition hover:border-rose-400"
+                          onClick={leaveRoom}
+                        >
+                          Leave room
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {roomError ? (
+                    <p className="text-sm text-rose-300">{roomError}</p>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="mt-4 text-sm leading-6 text-slate-400">
+                  Multiplayer mode lets you sync rooms with friends and play online.
+                </p>
               )}
             </div>
 
@@ -485,7 +681,7 @@ export default function Home() {
                             <p className="text-sm text-slate-400">Declare target</p>
                             <button
                               className="mt-4 w-full rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                              onClick={() => dispatch({ type: "DECLARE_TARGET", payload: targetCard })}
+                              onClick={() => handleGameAction({ type: "DECLARE_TARGET", payload: targetCard })}
                               disabled={!canDeclare || !targetCard || !isHumanTurn}
                             >
                               Declare {targetCard}
@@ -505,7 +701,7 @@ export default function Home() {
                               />
                               <button
                                 className="rounded-2xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
-                                onClick={() => dispatch({ type: "CUT", payload: safeCutIndex })}
+                                onClick={() => handleGameAction({ type: "CUT", payload: safeCutIndex })}
                                 disabled={!canCut || !isHumanTurn}
                               >
                                 Cut
@@ -520,14 +716,14 @@ export default function Home() {
                               <p className="text-sm text-slate-400">Draw a card or pick the top discard</p>
                               <button
                                 className="mt-4 w-full rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
-                                onClick={() => dispatch({ type: "DRAW_CARD", payload: "deck" })}
+                                onClick={() => handleGameAction({ type: "DRAW_CARD", payload: "deck" })}
                                 disabled={!canDrawDeck || !isHumanTurn}
                               >
                                 Draw from deck
                               </button>
                               <button
                                 className="w-full rounded-2xl bg-slate-700 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-60"
-                                onClick={() => dispatch({ type: "DRAW_CARD", payload: "discard" })}
+                                onClick={() => handleGameAction({ type: "DRAW_CARD", payload: "discard" })}
                                 disabled={!canDrawDiscard || !isHumanTurn}
                               >
                                 Pick top discard
@@ -550,7 +746,7 @@ export default function Home() {
                         <p className="text-sm text-slate-400">Redistribute after cut</p>
                         <button
                           className="mt-4 w-full rounded-2xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60"
-                          onClick={() => dispatch({ type: "REDISTRIBUTE" })}
+                          onClick={() => handleGameAction({ type: "REDISTRIBUTE" })}
                           disabled={!canRedistribute || !isHumanTurn}
                         >
                           Redistribute Deck
@@ -608,7 +804,7 @@ export default function Home() {
                               <CardTile
                                 key={card.id}
                                 card={card}
-                                onClick={isClickable ? () => dispatch({ type: "DISCARD_CARD", payload: card.id }) : undefined}
+                                onClick={isClickable ? () => handleGameAction({ type: "DISCARD_CARD", payload: card.id }) : undefined}
                                 disabled={!isClickable && player.id === currentPlayer?.id && currentHandLength === 5}
                               />
                             )
