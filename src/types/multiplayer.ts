@@ -22,6 +22,8 @@ export type RoomRecord = {
   updated_at: string
 }
 
+export type RoomInsert = Omit<RoomRecord, 'id' | 'created_at' | 'updated_at'>
+
 export type RoomActionPayload =
   | {
       type: "START_GAME"

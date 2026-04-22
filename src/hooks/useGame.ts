@@ -7,7 +7,10 @@ export function useGame() {
 
   function start(gameType: "kata" | "ak47", players: Player[], options?: { stakeValues?: string[] }) {
     const engine = getEngine(gameType)
-    const newState = engine.createGame(players, options)
+    const newState = engine.createGame(players)
+    if (options?.stakeValues) {
+      newState.meta.stakeValues = options.stakeValues
+    }
     setState(newState)
   }
 

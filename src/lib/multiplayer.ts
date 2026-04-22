@@ -1,7 +1,7 @@
 import { supabase } from "@/lib/supabaseClient"
 import { getEngine } from "@/lib/games"
 import type { GameAction, GameState, GameType } from "@/types/game"
-import type { RoomPlayer, RoomRecord } from "@/types/multiplayer"
+import type { RoomPlayer, RoomRecord, RoomInsert } from "@/types/multiplayer"
 
 export function buildRoomCode() {
   return Array.from({ length: 6 }, () => {
@@ -13,7 +13,7 @@ export function buildRoomCode() {
 export async function createRoom(roomName: string, gameType: GameType, host: RoomPlayer) {
   const roomCode = buildRoomCode()
   const { data, error } = await supabase
-    .from<RoomRecord>("rooms")
+    .from("rooms")
     .insert([
       {
         room_code: roomCode,
@@ -37,7 +37,7 @@ export async function createRoom(roomName: string, gameType: GameType, host: Roo
 
 export async function fetchRoomByCode(roomCode: string) {
   const { data, error } = await supabase
-    .from<RoomRecord>("rooms")
+    .from("rooms")
     .select("*")
     .eq("room_code", roomCode)
     .maybeSingle()
@@ -51,7 +51,7 @@ export async function fetchRoomByCode(roomCode: string) {
 
 export async function fetchRoomById(roomId: string) {
   const { data, error } = await supabase
-    .from<RoomRecord>("rooms")
+    .from("rooms")
     .select("*")
     .eq("id", roomId)
     .maybeSingle()
@@ -69,13 +69,13 @@ export async function joinRoomByCode(roomCode: string, player: RoomPlayer) {
     throw new Error("Room not found")
   }
 
-  if (room.players.some((member) => member.id === player.id)) {
+  if (room.players.some((member: RoomPlayer) => member.id === player.id)) {
     return room
   }
 
   const players = [...room.players, player]
   const { data, error } = await supabase
-    .from<RoomRecord>("rooms")
+    .from("rooms")
     .update({ players, updated_at: new Date().toISOString() })
     .eq("id", room.id)
     .select()
@@ -90,7 +90,7 @@ export async function joinRoomByCode(roomCode: string, player: RoomPlayer) {
 
 export async function updateRoomPlayers(roomId: string, players: RoomPlayer[]) {
   const { data, error } = await supabase
-    .from<RoomRecord>("rooms")
+    .from("rooms")
     .update({ players, updated_at: new Date().toISOString() })
     .eq("id", roomId)
     .select()
@@ -126,10 +126,10 @@ export async function leaveRoom(roomId: string, playerId: string) {
     throw new Error("Room not found")
   }
 
-  const players = room.players.filter((player) => player.id !== playerId)
+  const players = room.players.filter((player: RoomPlayer) => player.id !== playerId)
   const status = players.length === 0 ? "finished" : room.status
   const { data, error } = await supabase
-    .from<RoomRecord>("rooms")
+    .from("rooms")
     .update({ players, status, updated_at: new Date().toISOString() })
     .eq("id", roomId)
     .select()

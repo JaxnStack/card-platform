@@ -7,7 +7,7 @@ import { useMultiplayer } from "@/hooks/useMultiplayer"
 import { getEngine } from "@/lib/games"
 import { getAIMove } from "@/lib/ai/basicAI"
 import PlayingCard from "@/components/PlayingCard"
-import type { Card, GameType } from "@/types/game"
+import type { Card, GameType, GameAction } from "@/types/game"
 
 const TARGET_OPTIONS = [
   "A",

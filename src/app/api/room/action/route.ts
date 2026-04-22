@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { supabaseServer } from "@/lib/supabaseServer"
 import { getEngine } from "@/lib/games"
 import type { GameAction } from "@/types/game"
-import type { RoomActionPayload, RoomRecord } from "@/types/multiplayer"
+import type { RoomActionPayload, RoomRecord, RoomPlayer } from "@/types/multiplayer"
 
 export async function POST(request: Request) {
   const body = await request.json()
@@ -13,7 +13,7 @@ export async function POST(request: Request) {
   }
 
   const { data: room, error: fetchError } = await supabaseServer
-    .from<RoomRecord>("rooms")
+    .from("rooms")
     .select("*")
     .eq("id", roomId)
     .maybeSingle()
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: fetchError?.message ?? "Room not found" }, { status: 404 })
   }
 
-  const player = room.players.find((member) => member.id === playerId)
+  const player = room.players.find((member: RoomPlayer) => member.id === playerId)
   if (!player) {
     return NextResponse.json({ error: "Player is not part of this room" }, { status: 403 })
   }
@@ -38,11 +38,11 @@ export async function POST(request: Request) {
 
     const engine = getEngine(room.game_type)
     const initialGameState = engine.createGame(
-      room.players.map((member) => ({ id: member.id, name: member.name, hand: [] }))
+      room.players.map((member: RoomPlayer) => ({ id: member.id, name: member.name, hand: [] }))
     )
 
     const { data: updatedRoom, error: updateError } = await supabaseServer
-      .from<RoomRecord>("rooms")
+      .from("rooms")
       .update({
         state: initialGameState,
         status: "playing",
@@ -72,7 +72,18 @@ export async function POST(request: Request) {
   const validActions = engine.getValidActions(room.state, playerId)
   const action = payload.type === "GAME_ACTION" ? (payload.action as GameAction) : null
 
-  if (!action || !validActions.some((valid) => valid.type === action.type && valid.payload === action.payload)) {
+  if (!action) {
+    return NextResponse.json({ error: "Invalid action for current game state" }, { status: 400 })
+  }
+
+  const isValidAction = validActions.some((valid) => {
+    if (valid.type !== action.type) return false
+    const validPayload = "payload" in valid ? valid.payload : undefined
+    const actionPayload = "payload" in action ? action.payload : undefined
+    return validPayload === actionPayload
+  })
+
+  if (!isValidAction) {
     return NextResponse.json({ error: "Invalid action for current game state" }, { status: 400 })
   }
 
@@ -82,7 +93,7 @@ export async function POST(request: Request) {
   }
 
   const { data: updatedRoom, error: updateError } = await supabaseServer
-    .from<RoomRecord>("rooms")
+    .from("rooms")
     .update({
       state: nextState,
       status: nextState.status,
