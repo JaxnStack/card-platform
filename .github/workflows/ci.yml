@@ -22,7 +22,16 @@ jobs:
         run: npm ci
         working-directory: card-platform
 
-      # ✅ Correct Supabase CLI setup (replaces npm install -g supabase)
+      # Install Vercel CLI
+      - name: Install Vercel CLI
+        run: npm install -g vercel
+
+      # Pull environment variables from Vercel
+      - name: Pull Vercel Environment Variables
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+        working-directory: card-platform
+
+      # Setup Supabase CLI
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
         with:
