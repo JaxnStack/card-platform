@@ -1,10 +1,21 @@
 import { NextResponse } from "next/server"
-import { supabaseServer } from "@/lib/supabaseServer"
+import { createClient } from "@supabase/supabase-js"
 import { getEngine } from "@/lib/games"
 import type { GameAction } from "@/types/game"
 import type { RoomActionPayload, RoomRecord, RoomPlayer } from "@/types/multiplayer"
 
 export async function POST(request: Request) {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    {
+      auth: {
+        persistSession: false,
+        detectSessionInUrl: false
+      }
+    }
+  )
+
   const body = await request.json()
   const { roomId, playerId, payload }: { roomId: string; playerId: string; payload: RoomActionPayload } = body
 
@@ -12,7 +23,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
   }
 
-  const { data: room, error: fetchError } = await supabaseServer
+  const { data: room, error: fetchError } = await supabase
     .from("rooms")
     .select("*")
     .eq("id", roomId)
@@ -41,7 +52,7 @@ export async function POST(request: Request) {
       room.players.map((member: RoomPlayer) => ({ id: member.id, name: member.name, hand: [] }))
     )
 
-    const { data: updatedRoom, error: updateError } = await supabaseServer
+    const { data: updatedRoom, error: updateError } = await supabase
       .from("rooms")
       .update({
         state: initialGameState,
@@ -92,7 +103,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Action did not change game state" }, { status: 400 })
   }
 
-  const { data: updatedRoom, error: updateError } = await supabaseServer
+  const { data: updatedRoom, error: updateError } = await supabase
     .from("rooms")
     .update({
       state: nextState,

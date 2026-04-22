@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabaseClient"
+import { getSupabaseClient } from "@/lib/supabaseClient"
 import { getEngine } from "@/lib/games"
 import type { GameAction, GameState, GameType } from "@/types/game"
 import type { RoomPlayer, RoomRecord, RoomInsert } from "@/types/multiplayer"
@@ -12,6 +12,7 @@ export function buildRoomCode() {
 
 export async function createRoom(roomName: string, gameType: GameType, host: RoomPlayer) {
   const roomCode = buildRoomCode()
+  const supabase = getSupabaseClient()
   const { data, error } = await supabase
     .from("rooms")
     .insert([
@@ -36,6 +37,7 @@ export async function createRoom(roomName: string, gameType: GameType, host: Roo
 }
 
 export async function fetchRoomByCode(roomCode: string) {
+  const supabase = getSupabaseClient()
   const { data, error } = await supabase
     .from("rooms")
     .select("*")
@@ -50,6 +52,7 @@ export async function fetchRoomByCode(roomCode: string) {
 }
 
 export async function fetchRoomById(roomId: string) {
+  const supabase = getSupabaseClient()
   const { data, error } = await supabase
     .from("rooms")
     .select("*")
@@ -64,6 +67,7 @@ export async function fetchRoomById(roomId: string) {
 }
 
 export async function joinRoomByCode(roomCode: string, player: RoomPlayer) {
+  const supabase = getSupabaseClient()
   const room = await fetchRoomByCode(roomCode)
   if (!room) {
     throw new Error("Room not found")
@@ -89,6 +93,7 @@ export async function joinRoomByCode(roomCode: string, player: RoomPlayer) {
 }
 
 export async function updateRoomPlayers(roomId: string, players: RoomPlayer[]) {
+  const supabase = getSupabaseClient()
   const { data, error } = await supabase
     .from("rooms")
     .update({ players, updated_at: new Date().toISOString() })
@@ -104,6 +109,7 @@ export async function updateRoomPlayers(roomId: string, players: RoomPlayer[]) {
 }
 
 export function subscribeRoom(roomId: string, callback: (room: RoomRecord) => void) {
+  const supabase = getSupabaseClient()
   const channel = supabase
     .channel(`room-${roomId}`)
     .on(
