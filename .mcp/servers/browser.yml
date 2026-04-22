@@ -1,0 +1,8 @@
+# Browser MCP server configuration
+name: browser
+type: browser
+description: "Headless Chromium for browser-based testing and Puppeteer/Playwright connections"
+start: "google-chrome --headless --remote-debugging-port=9222 --disable-gpu --no-sandbox"
+ports:
+  - "9222:9222"
+notes: "Adjust the start command to your environment (chromium, chromium-browser, or google-chrome-stable). On CI images use the Playwright image or a Chromium package."

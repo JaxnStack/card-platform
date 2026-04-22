@@ -1,0 +1,8 @@
+# Playwright MCP server configuration
+name: playwright
+type: test-runner
+description: "Playwright test runner for E2E tests and browser automation"
+start: "npx playwright test"
+docker_image: "mcr.microsoft.com/playwright:v1"
+ports: []
+notes: "Ensure Playwright is installed (devDependencies). Run `npx playwright install --with-deps` to install browsers in CI images."

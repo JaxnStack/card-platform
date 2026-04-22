@@ -1,0 +1,11 @@
+# Supabase MCP server configuration
+name: supabase
+type: database
+description: "Local Supabase emulator configuration"
+start: "supabase start"
+env_files:
+  - .env
+  - .env.example
+ports:
+  - "54321:5432"
+notes: "Requires the Supabase CLI (`supabase`). Configure credentials and project in .env. The port mapping is optional and illustrative."
